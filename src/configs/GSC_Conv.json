@@ -1,0 +1,13 @@
+{
+  "experiment_name": "GSC_Convnet",
+  "agent": "GSC.GSCAgent",
+  "mode": "train",
+  "cuda": true,
+  "random_seed": 2304,
+  "epochs": 20,
+  "batch_size": 64,
+  "learning_rate": 0.01,
+  "momentum": 0.5,
+  "weight_decay": 0.0,
+  "checkpoint_file": "checkpoint.pth.tar"
+}

@@ -9,7 +9,7 @@ from agents.base import BaseAgent
 from torch.utils.data import DataLoader
 from datasets.GSC import GoogleSpeechCommandDataset
 from losses.NLL import NegativeLogLikelihood
-from models.BasicNet import BasicNet
+from models.BasicConvNet import BasicNet
 
 
 class GSCAgent(BaseAgent):

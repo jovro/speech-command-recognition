@@ -14,6 +14,7 @@ class BaseAgent:
         self.model: nn.Module = None
         self.optimizer: optim.Optimizer = None
         self.current_epoch = 0
+        self.loss_history = []
 
         self.cuda_available = t.cuda.is_available()
         if self.cuda_available and not self.config.cuda:
@@ -61,7 +62,9 @@ class BaseAgent:
     def train(self):
         for _ in tqdm(range(1, self.config.epochs + 1), desc="Training progress"):
             self.train_one_epoch()
-            self.validate(mode="test")
+            self.loss_history.append(self.validate(mode="test"))
+            for entry in self.loss_history:
+                print(entry)
             self.current_epoch += 1
 
     def train_one_epoch(self):

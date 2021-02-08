@@ -8,7 +8,7 @@ class BasicNet(nn.Module):
 
     def __init__(self, output_features=20):
         super(BasicNet, self).__init__()
-        self.activation = nn.PReLU()
+        self.nl = nn.PReLU()
         self.kernel_size = 5
 
         self.conv1 = nn.Conv2d(in_channels=1,
@@ -27,8 +27,9 @@ class BasicNet(nn.Module):
         self.apply(weights_init)
 
     def forward(self, x):
-        x = self.activation(F.max_pool2d(self.conv1(x), 2))
-        x = self.activation(F.max_pool2d(self.dropout2d(self.conv2(x)), 2))
-        x = self.activation(self.dense1(x.view(x.size(0), -1)))
+        x = self.nl(F.max_pool2d(self.conv1(x), 2))
+        x = self.nl(F.max_pool2d(self.dropout2d(self.conv2(x)), 2))
+        x = self.nl(self.dense1(x.view(x.size(0), -1)))
         x = self.dense2(self.dropout(x))
         return F.log_softmax(x, dim=1)
+

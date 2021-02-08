@@ -1,5 +1,5 @@
 {
-  "experiment_name": "GSC_Convnet",
+  "experiment_name": "GSC_MatchBoxNet",
   "agent": "GSCCNN.GSCAgent",
   "mode": "train",
   "cuda": true,

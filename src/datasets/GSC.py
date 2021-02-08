@@ -7,7 +7,7 @@ import numpy as np
 import torch as t
 from torch.utils.data import Dataset
 
-from utils.audio import get_mfcc
+from utils.audio import get_mfcc, get_audio
 
 
 class GoogleSpeechCommandDataset(Dataset):
@@ -28,7 +28,6 @@ class GoogleSpeechCommandDataset(Dataset):
 
             for (listfile, dirname) in [("validation_list.txt", "_valid"), ("testing_list.txt", "_test")]:
                 list_path = root_dir.joinpath(listfile)
-                new_list = []
                 with list_path.open("r") as readfile:
                     lines = readfile.readlines()
                 for line in lines:
@@ -56,7 +55,8 @@ class GoogleSpeechCommandDataset(Dataset):
         # sample_rate, samples = wavfile.read(filepath)
         # frequencies, times, spectrogram = signal.spectrogram(samples, sample_rate)
         # plt.pcolormesh(times, frequencies, spectrogram)
-        cepstrogram = get_mfcc(filepath, length=34)
+        cepstrogram = get_mfcc(filepath, length=128)
+        values, length, _ = get_audio(filepath, length=16000)
         return cepstrogram, target
 
     def __len__(self):

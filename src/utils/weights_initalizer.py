@@ -15,7 +15,8 @@ def weights_init(m: nn.Module):
         nn.init.xavier_normal_(m.weight.data)
         m.bias.data.zero_()
     elif isinstance(m, nn.BatchNorm2d):
-        m.weight.data.normal_(10, 0.05)
-        m.bias.data.zero_()
+        if m.affine:
+            m.weight.data.normal_(10, 0.05)
+            m.bias.data.zero_()
     else:
         logger.debug(f"Did not alter the weights for {classname}")

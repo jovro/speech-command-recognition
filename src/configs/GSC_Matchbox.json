@@ -1,13 +1,13 @@
 {
   "experiment_name": "GSC_MatchBoxNet",
-  "agent": "GSCCNN.GSCAgent",
+  "agent": "GSCMatchbox.GSCAgent",
   "mode": "train",
   "cuda": true,
   "random_seed": 2304,
-  "epochs": 200,
+  "epochs": 500,
   "batch_size": 128,
   "learning_rate": 0.05,
   "momentum": 0.9,
   "weight_decay": 0.0,
-  "checkpoint_file": "checkpoint.pth.tar"
+  "checkpoint_file": ""
 }

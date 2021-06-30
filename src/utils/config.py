@@ -39,11 +39,11 @@ def setup_logging(log_dir):
     console_handler.setLevel(logging.INFO)
     console_handler.setFormatter(Formatter(log_console_format))
 
-    exp_file_handler = RotatingFileHandler('{}exp_debug.log'.format(log_dir), maxBytes=10 ** 6, backupCount=5)
+    exp_file_handler = RotatingFileHandler(os.path.join(log_dir, "exp_debug.log"), maxBytes=10 ** 6, backupCount=5)
     exp_file_handler.setLevel(logging.DEBUG)
     exp_file_handler.setFormatter(Formatter(log_file_format))
 
-    exp_errors_file_handler = RotatingFileHandler('{}exp_error.log'.format(log_dir), maxBytes=10 ** 6, backupCount=5)
+    exp_errors_file_handler = RotatingFileHandler(os.path.join(log_dir, "exp_debug.log"), maxBytes=10 ** 6, backupCount=5)
     exp_errors_file_handler.setLevel(logging.WARNING)
     exp_errors_file_handler.setFormatter(Formatter(log_file_format))
 
@@ -72,7 +72,7 @@ def get_config_from_json(json_file):
 
 def process_config(json_file):
     config = get_config_from_json(json_file)
-    print(" THE Configuration of your experiment ..")
+    print("Experiment configuration:")
     pprint(config)
 
     # making sure that you have provided the exp_name.
@@ -83,11 +83,9 @@ def process_config(json_file):
         exit(-1)
 
     # create some important directories to be used for that experiment.
-    config.summary_dir = os.path.join("experiments", config.experiment_name, "summaries/")
-    config.checkpoint_dir = os.path.join("experiments", config.experiment_name, "checkpoints/")
-    config.out_dir = os.path.join("experiments", config.experiment_name, "out/")
-    config.log_dir = os.path.join("experiments", config.experiment_name, "logs/")
-    create_directories([config.summary_dir, config.checkpoint_dir, config.out_dir, config.log_dir])
+    config.checkpoint_dir = os.path.join("experiments", config.experiment_name, "checkpoints")
+    config.log_dir = os.path.join("experiments", config.experiment_name, "logs")
+    create_directories([config.checkpoint_dir, config.log_dir])
 
     # setup logging in the project
     setup_logging(config.log_dir)

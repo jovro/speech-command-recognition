@@ -1,12 +1,11 @@
-from typing import List
-
-import torch as t
 import torch.nn as nn
 import torch.nn.functional as f
+import torch as t
+
+from .selfonn import SelfONN1DLayer
 
 
 class MatchBoxBlock(nn.Module):
-    __constants__ = ["residual", "separable", "convs", "residual_layers"]
 
     def __init__(
             self,
@@ -16,20 +15,20 @@ class MatchBoxBlock(nn.Module):
             kernel_size=11,
             stride=1,
             dilation=1,
-            dropout=0.2,
+            dropout=0.0,
             residual=True,
-            separable=False,
+            separable=False
     ):
         super().__init__()
         assert not (stride > 1 and dilation > 1), "Stride and dilation cannot be both higher than 1"
-
         padding_amount = (dilation * kernel_size) // 2 - 1 if dilation > 1 else kernel_size // 2
 
         self.separable = separable
+        self.convs = nn.ModuleList()
+        channels_loop = in_channels
 
-        subblock_list = nn.ModuleList()
-
-        subblock_list.extend(
+        """
+        self.convs.extend(
             self.get_conv_and_batchnorm(
                 in_channels,
                 out_channels,
@@ -39,12 +38,12 @@ class MatchBoxBlock(nn.Module):
                 padding=padding_amount,
                 separable=separable
             )
-        )
+        )"""
 
-        for _ in range(subblocks - 2):
-            subblock_list.extend(
+        for _ in range(subblocks - 1):
+            self.convs.extend(
                 self.get_conv_and_batchnorm(
-                    out_channels,
+                    channels_loop,
                     out_channels,
                     kernel_size=kernel_size,
                     stride=stride,
@@ -53,12 +52,12 @@ class MatchBoxBlock(nn.Module):
                     separable=separable
                 )
             )
+            self.convs.extend(nn.Sequential(nn.ReLU(), nn.Dropout(p=dropout)))
+            channels_loop = out_channels
 
-            subblock_list.extend(nn.Sequential(nn.ReLU(), nn.Dropout(p=dropout)))
-
-        subblock_list.extend(
+        self.convs.extend(
             self.get_conv_and_batchnorm(
-                out_channels,
+                channels_loop,
                 out_channels,
                 kernel_size=kernel_size,
                 stride=stride,
@@ -68,26 +67,18 @@ class MatchBoxBlock(nn.Module):
             )
         )
 
-        self.convs = subblock_list
-
-        self.residual_layers = None
         if residual:
-            res_list = nn.ModuleList()
+            self.residual_layers = nn.ModuleList(
+                self.get_conv_and_batchnorm(
+                    in_channels,
+                    out_channels,
+                    kernel_size=1
+                )
+            )
+        else:
+            self.residual_layers = None
 
-            res_panes = [in_channels]
-            for ip in res_panes:
-                res = nn.ModuleList(
-                    self.get_conv_and_batchnorm(
-                        ip,
-                        out_channels,
-                        kernel_size=1
-                    ))
-
-                res_list.append(res)
-
-            self.residual_layers = res_list
-
-        self.mout = nn.Sequential(nn.ReLU(), nn.Dropout(p=dropout))
+        self.activations = nn.Sequential(nn.ReLU(), nn.Dropout(p=dropout))
 
     def get_conv_and_batchnorm(
             self,
@@ -136,58 +127,63 @@ class MatchBoxBlock(nn.Module):
             ]
 
         layers.append(nn.BatchNorm1d(out_channels, eps=1e-3, momentum=0.1))
-
         return layers
 
-    def forward(self, input_: List[t.Tensor]) -> List[t.Tensor]:
-        out = input_[-1]
+    def forward(self, x):
+        out = x
         for layer in self.convs:
             out = layer(out)
 
         if self.residual_layers is not None:
-            for i, layer in enumerate(self.residual_layers):
-                res_out = input_[i]
-                for res_layer in layer:
-                    res_out = res_layer(res_out)
-                out = out + res_out
+            res_out = x
+            for res_layer in self.residual_layers:
+                res_out = res_layer(res_out)
+            out = out + res_out
 
-        out = self.mout(out)
-        return [out]
+        out = self.activations(out)
+        return out
 
 
 class MatchBoxNet(nn.Module):
-    # https://arxiv.org/abs/2004.08531
     def __init__(self, num_classes, b=3, r=1, c=64):
+        assert all(x > 0 and isinstance(x, int) for x in (b, r, c))
         super().__init__()
+
+        # self.prologue = nn.Sequential(SelfONN1DLayer(64, 64, 11, 3, bias=False, groups=64),
+        #                              MatchBoxBlock(64, 128,
+        #                                            kernel_size=1, subblocks=1,
+        #                                            separable=False, residual=False))
         self.prologue = MatchBoxBlock(64, 128, kernel_size=11, subblocks=1, separable=True, residual=False)
-
         self.residuals = self._get_block_layers(b=b, r=r, c=c, in_channels=128, initial_kernel_size=13)
-
         self.epilogue = nn.Sequential(
-            MatchBoxBlock(64, 128, kernel_size=29, dilation=2, subblocks=1, separable=True,
-                          residual=False),
-            MatchBoxBlock(128, 128, kernel_size=1, subblocks=1, separable=False,
-                          residual=False))
+            MatchBoxBlock(64, 128, kernel_size=29, dilation=2, subblocks=1, separable=True, residual=False),
+            MatchBoxBlock(128, 128, kernel_size=1, subblocks=1, separable=False, residual=False),
+
+            # nn.Conv1d(128, 128, kernel_size=1, groups=128),
+            # nn.Tanh(),
+            # SelfONN1DLayer(128, 128, 1, q=3, groups=128)
+        )
+        # self.epilogue[1].activations[0] = nn.Tanh()
         self.pooling = nn.AdaptiveAvgPool1d(output_size=1)
+
         self.output = nn.Linear(in_features=128, out_features=num_classes, bias=True)
 
     def _get_block_layers(self, b, r, c, in_channels, initial_kernel_size=13):
-        assert b > 0 and r > 0 and c > 0
-        layers = []
-        # First layer might have different inchannels
-        layers.append(
+        kernel_size = initial_kernel_size
+        layers = [
+            # First layer might have different inchannels
             MatchBoxBlock(
                 in_channels=in_channels,
                 out_channels=c,
-                kernel_size=initial_kernel_size,
+                kernel_size=kernel_size,
                 subblocks=r,
                 separable=True,
                 residual=True
             )
-        )
-        kernel_size = initial_kernel_size + 2
+        ]
 
-        for i in range(0, b - 1):
+        for _ in range(0, b - 1):
+            kernel_size += 2
             layers.append(
                 MatchBoxBlock(
                     in_channels=c,
@@ -198,15 +194,23 @@ class MatchBoxNet(nn.Module):
                     residual=True
                 )
             )
-            kernel_size += 2
 
         return nn.Sequential(*layers)
 
     def forward(self, x):
-        x = self.prologue([x])
+        x = self.prologue(x)
         x = self.residuals(x)
         x = self.epilogue(x)
-        batch, in_channels, timesteps = x[0].size()
-        x = self.pooling(x[0]).view(batch, in_channels)
+        batch, in_channels, timesteps = x.size()
+        x = self.pooling(x).view(batch, in_channels)
         x = self.output(x)
         return f.log_softmax(x, dim=-1)
+
+
+def print_params(model):
+    print(sum(p.numel() for p in model.parameters() if p.requires_grad))
+
+
+if __name__ == "__main__":
+    model = MatchBoxNet(30, b=3, r=2, c=64)
+    print_params(model)

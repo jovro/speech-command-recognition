@@ -6,6 +6,14 @@ filterwarnings("ignore", category=UserWarning)
 import librosa
 import numpy as np
 import torch as t
+import torchaudio
+
+from utils.audio_augmentation import WhiteNoisePerturbation, ShiftPerturbation
+
+PERTURB = True
+
+shift = ShiftPerturbation()
+whitenoise = WhiteNoisePerturbation()
 
 
 def get_audio(file: Path, length: int = None):
@@ -23,29 +31,61 @@ def _normalize(tensor: t.Tensor, mode: str) -> t.Tensor:
     if mode == "standardization":
         tensor.add_(-tensor.mean())
         tensor.div_(tensor.std())
-    elif mode == "minmax":
-        minval = tensor.min()
-        maxval = tensor.max()
+    else:
+        minval = -120
+        maxval = 70
         tensor.add_(-minval)
         tensor.div_(maxval - minval)
+        tensor.mul_(2)
+        tensor.add_(-1)
     return tensor
 
 
-def get_mfcc(file: Path, length: int = None, normalization: str = "standardization"):
-    window_size = 0.02
+def get_mfcc(file: Path, length: int = None, normalization: str = "minmax", training=False):
+    window_size = 0.025
     window_stride = 0.01
     values, sampling_rate = librosa.load(file, sr=None)
+    assert sampling_rate == 16000
+
+    if PERTURB and training:
+        shift.perturb(values)
+        whitenoise.perturb(values)
+
     fft_window_length = int(sampling_rate * window_size)
     hop_length = int(sampling_rate * window_stride)
 
-    cepstrogram = librosa.feature.mfcc(values, sampling_rate, n_mfcc=64, hop_length=hop_length, n_fft=fft_window_length)
+
+    mel_kwargs = {}
+    mel_kwargs['f_min'] = 0.0
+    mel_kwargs['f_max'] = None
+    mel_kwargs['n_mels'] = 64
+
+    mel_kwargs['n_fft'] = fft_window_length  # 512
+
+    mel_kwargs['win_length'] = fft_window_length
+    mel_kwargs['hop_length'] = hop_length
+    mel_kwargs['window_fn'] = t.hann_window
+
+    featurizer = torchaudio.transforms.MFCC(
+        sample_rate=sampling_rate,
+        n_mfcc=64,
+        dct_type=2,
+        norm="ortho",
+        log_mels=True,
+        melkwargs=mel_kwargs
+    )
+
+    cepstrogram = featurizer(t.FloatTensor(values))
+    image_len = cepstrogram.shape[-1]
 
     if length is not None:
-        cepstrogram = cepstrogram[:, :length]
-        if cepstrogram.shape[1] < length:
-            cepstrogram = np.hstack((cepstrogram, np.zeros((cepstrogram.shape[0], length - cepstrogram.shape[1]))))
-    cepstrogram = np.resize(cepstrogram, (1, cepstrogram.shape[0], cepstrogram.shape[1]))
-    cepstrogram = t.FloatTensor(cepstrogram)
+        pad_left = (length - image_len) // 2
+        pad_right = (length - image_len) // 2
+
+        if (length - image_len) % 2 == 1:
+            pad_right += 1
+
+        cepstrogram = t.nn.functional.pad(cepstrogram, [pad_left, pad_right], mode="constant", value=0)
 
     cepstrogram = _normalize(cepstrogram, normalization)
     return cepstrogram

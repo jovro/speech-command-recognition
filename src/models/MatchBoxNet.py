@@ -149,21 +149,12 @@ class MatchBoxNet(nn.Module):
         assert all(x > 0 and isinstance(x, int) for x in (b, r, c))
         super().__init__()
 
-        # self.prologue = nn.Sequential(SelfONN1DLayer(64, 64, 11, 3, bias=False, groups=64),
-        #                              MatchBoxBlock(64, 128,
-        #                                            kernel_size=1, subblocks=1,
-        #                                            separable=False, residual=False))
         self.prologue = MatchBoxBlock(64, 128, kernel_size=11, subblocks=1, separable=True, residual=False)
         self.residuals = self._get_block_layers(b=b, r=r, c=c, in_channels=128, initial_kernel_size=13)
         self.epilogue = nn.Sequential(
             MatchBoxBlock(64, 128, kernel_size=29, dilation=2, subblocks=1, separable=True, residual=False),
             MatchBoxBlock(128, 128, kernel_size=1, subblocks=1, separable=False, residual=False),
-
-            # nn.Conv1d(128, 128, kernel_size=1, groups=128),
-            # nn.Tanh(),
-            # SelfONN1DLayer(128, 128, 1, q=3, groups=128)
         )
-        # self.epilogue[1].activations[0] = nn.Tanh()
         self.pooling = nn.AdaptiveAvgPool1d(output_size=1)
 
         self.output = nn.Linear(in_features=128, out_features=num_classes, bias=True)
